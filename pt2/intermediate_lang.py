@@ -1,23 +1,50 @@
 #!/usr/bin/env python3
+
+#in this version we remake the lexer to character-by-character
+
 import re
 import sys
 import math
 
-regex_thing=r"\s+|;"
-
 class ScratchLexer():
     def __init__(self, text):
-        self.next  = 0
-        self.words = re.compile(r"\s+").split(text)
-        #self.words = []
+        self.position = 0
+        self.text = text
 
     def nextWord(self):
-        if self.next >= len(self.words):
+        if self.position >= len(self.text):
             return None
-        else:
-            ret = self.words[self.next]
-            self.next += 1
-            return ret
+        while self.text[self.position].isspace():
+            self.position += 1
+            if self.position >= len(self.text):
+                return None
+        new_pos = self.position
+        while not self.text[new_pos].isspace():
+            new_pos += 1
+            if new_pos >= len(self.text):
+                break
+        collector = self.text[self.position:new_pos]
+        self.position = new_pos + 1
+        return collector
+
+    def nextCharsUpTo(self,c):
+        if self.position >= len(self.text):
+            return None
+        new_pos = self.position
+        while self.text[new_pos] != c:
+            new_pos += 1
+            if new_pos > len(self.text):
+                raise Exception("Unexpected end of input")
+        collector = self.text[self.position:new_pos]
+        self.position = new_pos + 1
+        return collector
+
+        #if self.next >= len(self.words):
+        #    return None
+        #else:
+        #    ret = self.words[self.next]
+        #    self.next += 1
+        #    return ret
 
 #our type that represents a variable
 class VarObj():
@@ -44,11 +71,17 @@ class VarObj():
     def __rdiv__(self,other):
         return other/self.val
 
+#==== Language Commands ====
+
 def PRINT(scratch):
     print(scratch.stack.pop())
 
 def PSTACK(scratch):
     print(scratch.stack)
+
+def stackcheck(scratch,n):
+    if (len(scratch.stack) < n):
+        raise Exception("Not enough items on stack")
 
 #unary operator
 def UNOP(scratch,f):
@@ -121,18 +154,7 @@ def FETCH(scratch):
     UNOP(scratch, lambda x : x.val)
 
 def STRNG(scratch):
-    collector = ''
-    done = False
-    while (done != True):
-        next_word = scratch.lexer.nextWord()
-        if next_word is None:
-            raise Exception("Unexpected end of input")
-        if next_word[-1] is "\"":
-            collector += next_word[0:-1]
-            done = True
-        else:
-            collector += next_word + ' '
-    scratch.stack.append(collector)
+    scratch.stack.append(scratch.lexer.nextCharsUpTo('\"'))
 
 #the same thing as above but we ignore the contents
 def COMMENT(scratch):
@@ -142,21 +164,60 @@ def COMMENT(scratch):
         if next_word is None:
             raise Exception("Unexpected end of input")
 
+def DUP(scratch):
+    stackcheck(scratch,1)
+    tos = scratch.stack.pop()
+    scratch.stack.append(tos)
+    scratch.stack.append(tos)
+
+def DROP(scratch):
+    stackcheck(scratch,1)
+    tos = scratch.stack.pop()
+
+def SWAP(scratch):
+    stackcheck(scratch,2)
+    tos = scratch.stack.pop()
+    _2os = scratch.stack.pop()
+    scratch.stack.append(tos)
+    scratch.stack.append(_2os)
+
+def OVER(scratch):
+    stackcheck(scratch,2)
+    tos = scratch.stack.pop()
+    _2os = scratch.stack.pop()
+    scratch.stack.append(_2os)
+    scratch.stack.append(tos)
+    scratch.stack.append(_2os)
+
+def ROT(scratch):
+    stackcheck(scratch,3)
+    tos = scratch.stack.pop()
+    _2os = scratch.stack.pop()
+    _3os = scratch.stack.pop()
+    scratch.stack.append(_2os)
+    scratch.stack.append(tos)
+    scratch.stack.append(_3os)
+
 class Scratch():
     def __init__(self):
         self.vars={}
         self.dictionary={
                 'PRINT' : PRINT,
                 'PSTACK': PSTACK,
-                '+' : ADD,
-                '-' : SUB,
-                '/' : DIV,
-                '*' : MULT,
                 'SQRT' : SQRT,
                 'VAR' : MKVAR,
                 'STORE' : STORE,
                 'FETCH' : FETCH,
                 'CONST' : CONST,
+                'DUP' : DUP,
+                'DROP' : DROP,
+                'SWAP' : SWAP,
+                'OVER' : OVER,
+                'ROT' : ROT,
+                '+' : ADD,
+                '-' : SUB,
+                '/' : DIV,
+                '*' : MULT,
                 '\"' : STRNG,
                 '/*' : COMMENT}
         self.stack = []
