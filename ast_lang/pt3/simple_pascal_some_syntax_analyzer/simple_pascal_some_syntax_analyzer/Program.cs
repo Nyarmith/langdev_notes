@@ -102,6 +102,13 @@ namespace simple_pascal_some_syntax_analyzer
             return current_char;
         }
 
+        public string term()
+        {
+            Token cur = current_token;
+            eat(tokens.INTEGER);
+            return cur.value;
+        }
+
         //check current token, mark it as "consumed", and get next one
         public void eat(string token_type)
         {
@@ -115,47 +122,23 @@ namespace simple_pascal_some_syntax_analyzer
         {
             current_token = getNextToken();
 
-            Token left = current_token;
-            eat(tokens.INTEGER);  //we expect the token to be an integer
+            int res = Convert.ToInt32(term());
 
-            /*
-            Token op = current_token;
-            if (op.type == tokens.PLUS)
-                eat(tokens.PLUS);
-            else
-                eat(tokens.MINUS);
-
-            Token right = current_token;
-            eat(tokens.INTEGER);
-
-            string result;
-            if (op.type == tokens.MINUS)
-                result = Convert.ToString(
-                Convert.ToInt32(left.value) - Convert.ToInt32(right.value)
-                );
-            else
-                result = Convert.ToString(
-                Convert.ToInt32(left.value) + Convert.ToInt32(right.value)
-                );
-                */
-            int running_val = Convert.ToInt32(left.value);
-            while (current_token.type != tokens.EOF)
+            while (Array.IndexOf(new String[] { tokens.PLUS, tokens.MINUS }, current_token.type) != -1)
             {
                 Token op = current_token;
                 if (op.type == tokens.PLUS)
+                {
                     eat(tokens.PLUS);
+                    res += Convert.ToInt32(term());
+                }
                 else
+                {
                     eat(tokens.MINUS);
-
-                Token nextNum = current_token;
-                eat(tokens.INTEGER);
-                if (op.type == tokens.MINUS)
-                    running_val -= Convert.ToInt32(nextNum.value);
-                else
-                    running_val += Convert.ToInt32(nextNum.value);
+                    res -= Convert.ToInt32(term());
+                }
             }
-
-            return Convert.ToString(running_val);
+            return Convert.ToString(res);
         }
     }
 
@@ -180,5 +163,9 @@ namespace simple_pascal_some_syntax_analyzer
         //main lessons:
         // -parsing is also syntax analysis, thus a parser/scanner also functions as a syntax anaylzer
         // -syntax diagram specifically referes to which statements are valid and which aren't
+        // -a term, for our current purposes, is just an integer
+        // -uh you should make syntax diagrams and make your parser follow the diagram with correct terminology
+
+        // * To be clear, the parser just recognizes the structure making sure that it corresponds to the language's specification, and the interpreteractually evaluates the expression sonce the parser has successfully recognized(parsed) it
     }
 }
