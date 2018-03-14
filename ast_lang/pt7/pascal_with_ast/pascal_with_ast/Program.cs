@@ -4,7 +4,53 @@ namespace pascal_with_ast
 {
     /* So we're going to make something that builds a form of Intermediate-Representation(IR), in this case it's an AST.
      * A parser with no IR and just makes a single pass, evaluating expressions as soon as they're recognized are called "syntax-directed" interpreters
+     * 
+     * A parse-tree(sonetimes called a concrete-syntax tree) is a tree that represents the syntactic structure of a language constructed according to its grammar
+     * 
+     * In our previous cases, the call stack implicitly represents a parse tree
      */
+
+
+    /* Main differences between ASTs and Parse trees
+     * *ASTs use operators/operations as root and interior nodes, with operands as their children
+     * *ASTs do not use interior nodes to represent a grammar rule, unlike the parse tree
+     * *ASTs don't prepresent every detail from the real syntax (that's why they're called abstract), no rule nodes and no parentheses, for example
+     * *ASTs are dense compared to a parse tree for the same language construct
+     */
+
+    class AST
+    {
+        public Token token;
+    }
+
+    class BinOp : AST
+    {
+        public AST left;
+        public AST right;
+        public Token op;
+        public BinOp(AST left_, Token op_, AST right_)
+        {
+            left = left_;
+            token = op = op_;
+            right = right_;
+        }
+    }
+
+    class Num : AST
+    {
+        public string value;
+        public Num(Token token_)
+        {
+            token = token_;
+            value = token_.value;
+        }
+    }
+
+    class NodeVisitor
+    {
+        public 
+    }
+
     class tokens
     {
         public const string INTEGER = "INTEGER";
@@ -163,12 +209,11 @@ namespace pascal_with_ast
                 error();
         }
 
-        public string expr()
+        /** expr: term ((MUL|DIV) term)*
+        */
+        public AST expr()
         {
-            //Ok, we're going to do the recognition of our BNF stuff here!
-            //expr: factor ((MUL|DIV) factor)*
-            //factor: INTEGER
-            int ret = Convert.ToInt32(term());
+            AST node = term();
 
             /* ((MUL|DIV) factor)* turns into a while loop */
             string[] valid_operators = new string[] { tokens.PLUS, tokens.MINUS };
@@ -178,25 +223,22 @@ namespace pascal_with_ast
                 if (t.type == tokens.PLUS)
                 {
                     eat(tokens.PLUS);
-                    ret += Convert.ToInt32(term());
                 }
                 else if (t.type == tokens.MINUS)
                 {
                     eat(tokens.MINUS);
-                    ret -= Convert.ToInt32(term());
                 }
+                node = new BinOp(node, t, term());
             }
-            return Convert.ToString(ret);
+            return node;
         }
 
-        public string term()
+        /** term: factor ((MUL|DIV) factor)*
+        */
+        public AST term()
         {
-            //Ok, we're going to do the recognition of our BNF stuff here!
-            //expr: nest ((MUL|DIV) nest)*
-            //factor: INTEGER
-            int ret = Convert.ToInt32(factor());
+            AST node = factor();
 
-            /* ((MUL|DIV) factor)* turns into a while loop */
             string[] valid_operators = new string[] { tokens.MUL, tokens.DIV };
             while (Array.IndexOf(valid_operators, current_token.type) != -1)
             {
@@ -204,42 +246,44 @@ namespace pascal_with_ast
                 if (t.type == tokens.MUL)
                 {
                     eat(tokens.MUL);
-                    ret *= Convert.ToInt32(factor());
                 }
                 else if (t.type == tokens.DIV)
                 {
                     eat(tokens.DIV);
-                    ret /= Convert.ToInt32(factor());
                 }
+                node = new BinOp(node, t, factor());
             }
-            return Convert.ToString(ret);
+
+            return node;
         }
 
 
-        /** Returns an INTEGER token value
-         *  factor : INTEGER
+        /** factor : INTEGER | LPAREN expr RPAREN
          */
-        public string factor()
+        public AST factor()
         {
-            string ret;
-            if (current_token.type == tokens.LPAREN)
+            Token tkn = current_token;
+            if (tkn.type == tokens.LPAREN)
             {
                 eat(tokens.LPAREN);
-                ret = expr();
+                AST node = expr();
                 eat(tokens.RPAREN);
-                return ret;
+                return node;
             }
 
             else if (current_token.type == tokens.INTEGER)
             {
-
-                ret = current_token.value;
                 eat(tokens.INTEGER);
-                return ret;
+                return new Num(tkn);
             }
 
             error();
-            return ""; //should never get here
+            return new AST(); //should never get here
+        }
+
+        public AST parse()
+        {
+            return expr();
         }
     }
 
