@@ -18,6 +18,35 @@ namespace pascal_with_ast
      * *ASTs are dense compared to a parse tree for the same language construct
      */
 
+    class tokens
+    {
+        public const string INTEGER = "INTEGER";
+        public const string PLUS = "PLUS";
+        public const string MINUS = "MINUS";
+        public const string MUL = "MUL";
+        public const string DIV = "DIV";
+        public const string LPAREN = "LPAREN";
+        public const string RPAREN = "RPAREN";
+        public const string EOF = "EOF";
+    }
+
+    class Token
+    {
+        public string type;
+        public string value;
+
+        public Token(string type_, string value_)
+        {
+            type = type_;
+            value = value_;
+        }
+
+        public override string ToString()
+        {
+            return String.Format("Token({0},{1})", type, value);
+        }
+    }
+
     class AST
     {
         public Token token;
@@ -46,37 +75,46 @@ namespace pascal_with_ast
         }
     }
 
+    //TODO: Make below work, figure out how to make correct visitor pattern in c#
     class NodeVisitor
     {
-        public 
-    }
-
-    class tokens
-    {
-        public const string INTEGER = "INTEGER";
-        public const string PLUS = "PLUS";
-        public const string MINUS = "MINUS";
-        public const string MUL = "MUL";
-        public const string DIV = "DIV";
-        public const string LPAREN = "LPAREN";
-        public const string RPAREN = "RPAREN";
-        public const string EOF = "EOF";
-    }
-
-    class Token
-    {
-        public string type;
-        public string value;
-
-        public Token(string type_, string value_)
+        public string visit(AST node)
         {
-            type = type_;
-            value = value_;
+            Action visitor = get_appropriate_method(node.GetType, generic_visit);
+            return visitor(node);
         }
 
-        public override string ToString()
+        public void generic_visit(AST node)
         {
-            return String.Format("Token({0},{1})", type, value);
+            throw new Exception(String.Format("No visit_{} method", node.GetType()));
+        }
+    }
+
+    class Interpreter : NodeVisitor
+    {
+        private Parser parser;
+        public Interpreter(Parser parser_)
+        {
+            parser = parser_;
+        }
+
+        string visit_BinOp(BinOp node)
+        {
+            switch (node.op.type)
+            {
+                case tokens.PLUS:
+                    return (Convert.ToString(Convert.ToInt32(visit(node.left)) + Convert.ToInt32(visit(node.right))));
+                case tokens.MINUS:
+                    return (Convert.ToString(Convert.ToInt32(visit(node.left)) + Convert.ToInt32(visit(node.right))));
+                case tokens.MUL:
+                    return (Convert.ToString(Convert.ToInt32(visit(node.left)) * Convert.ToInt32(visit(node.right))));
+                case tokens.DIV:
+                    return (Convert.ToString(Convert.ToInt32(visit(node.left)) / Convert.ToInt32(visit(node.right))));
+            }
+        }
+        string visit_Num(Num node)
+        {
+            return node.value;
         }
     }
 
