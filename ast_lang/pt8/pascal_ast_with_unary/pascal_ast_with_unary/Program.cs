@@ -1,38 +1,16 @@
 ﻿using System;
 
-namespace pascal_with_ast
+namespace ast_pascal_with_unary
 {
-    /* So we're going to make something that builds a form of Intermediate-Representation(IR), in this case it's an AST.
-     * A parser with no IR and just makes a single pass, evaluating expressions as soon as they're recognized are called "syntax-directed" interpreters
-     * 
-     * A parse-tree(sonetimes called a concrete-syntax tree) is a tree that represents the syntactic structure of a language constructed according to its grammar
-     * 
-     * In our previous cases, the call stack implicitly represents a parse tree
+
+    /* Today we're adding unary operators
+     * -So, first-off I thought this would require adding a new token, but it doesn't, adding a new AST node type does the work
+     * -I was tempted to add a step in the parser where the + unary is ignored, but I think it's better to let the Interpreter handle the meaning of the unary operators, 
+     * even those that do nothing(obviously, you can super-optimize here if necessary)
+     * -This is really easy to do with our current structure
      */
 
-
-    /* Main differences between ASTs and Parse trees
-     * *ASTs use operators/operations as root and interior nodes, with operands as their children
-     * *ASTs do not use interior nodes to represent a grammar rule, unlike the parse tree
-     * *ASTs don't prepresent every detail from the real syntax (that's why they're called abstract), no rule nodes and no parentheses, for example
-     * *ASTs are dense compared to a parse tree for the same language construct
-     */
-
-    /* So here's the flow of the final state of this program
-     * Lexer --[token]--> Parser --[AST]--> Interpreter
-     * So the interpreter is the thing visiting the nodes and computing the final outputs
-     * In our current state, this parser is a recurse-descent parser like the previous one, but it is not syntax-directed because it constructs an IR which is processed afterwards.
-     * Also, here's a formal def: a recursive-descent parser is a top-down parser that uses a set of recursive procedures to process the input
-     */
-
-    /* Exercises:
-     *  1. Write a translator that takes as input an arithmetic expression and prints it out in postfix notation. (hint make a visitor that works on the AST)
-     *  2. Like the above, write a translator that takes as input an arithmetic expression and prints it out in LISP style notation. That is 2+3 would become (+ 2 3) and (2+3*5) would become (+ 2 (* 3 5))
-     *     It's pretty similar to the above so it seems pretty feasible.
-     */
     //----------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
 
     //====Definition of language's tokens====
     class tokens
@@ -69,6 +47,7 @@ namespace pascal_with_ast
     {
         string visit(AST node);
         string visit(BinOp node);
+        string visit(UnaryOp node);
         string visit(Num node);
     }
 
@@ -82,6 +61,22 @@ namespace pascal_with_ast
         public Token token;
 
         public virtual string accept(NodeVisitor visitor)
+        {
+            return visitor.visit(this);
+        }
+    }
+
+    class UnaryOp : AST
+    {
+        public AST value;
+        public Token op;
+
+        public UnaryOp(Token op_, AST value_)
+        {
+            op = op_;
+            value = value_;
+        }
+        public override string accept(NodeVisitor visitor)
         {
             return visitor.visit(this);
         }
@@ -222,6 +217,12 @@ namespace pascal_with_ast
     //================================
     //==== Parser Definition ====
     //================================
+
+    /* Grammar:
+     *   expr  : term ((PLUS|MINUS) term)*
+     *   term  : term ((MUL|DIV) term)*
+     *   factor: (PLUS|MINUS) factor | INTEGER | LPAREN expr RPAREN
+     */
     class Parser
     {
         private Token current_token;
@@ -247,12 +248,12 @@ namespace pascal_with_ast
                 error();
         }
 
-        // expr: term ((MUL|DIV) term)*
+        // expr: term ((PLUS|MINUS) term)*
         public AST expr()
         {
             AST node = term();
 
-            /* ((MUL|DIV) factor)* turns into a while loop */
+            /* ((PLUS|MINUS) term)* turns into a while loop */
             string[] valid_operators = new string[] { tokens.PLUS, tokens.MINUS };
             while (Array.IndexOf(valid_operators, current_token.type) != -1)
             {
@@ -294,7 +295,7 @@ namespace pascal_with_ast
         }
 
 
-        // factor : INTEGER | LPAREN expr RPAREN
+        // factor : (PLUS|MINUS) factor | INTEGER | LPAREN expr RPAREN
         public AST factor()
         {
             Token tkn = current_token;
@@ -305,11 +306,20 @@ namespace pascal_with_ast
                 eat(tokens.RPAREN);
                 return node;
             }
-
             else if (current_token.type == tokens.INTEGER)
             {
                 eat(tokens.INTEGER);
                 return new Num(tkn);
+            }
+            else if (current_token.type == tokens.PLUS)
+            {
+                eat(tokens.PLUS);
+                return new UnaryOp(tkn,factor());
+            }
+            else if (current_token.type == tokens.MINUS)
+            {
+                eat(tokens.MINUS);
+                return new UnaryOp(tkn,factor());
             }
 
             error();
@@ -361,6 +371,18 @@ namespace pascal_with_ast
             return visit(node);
         }
 
+        public string visit(UnaryOp node)
+        {
+            switch (node.op.type)
+            {
+                case tokens.PLUS:
+                    return node.value.accept(this);
+                case tokens.MINUS:
+                    return Convert.ToString(-1*Convert.ToInt32(node.value.accept(this)));
+            }
+            return visit(node);
+        }
+
         public string visit(AST node)
         {
             throw new Exception(String.Format("No visit_{0} method", node.GetType()));
@@ -383,98 +405,9 @@ namespace pascal_with_ast
 
                 Lexer lexer = new Lexer(input);
                 Parser parser = new Parser(lexer);
-                LispTranslator intrp = new LispTranslator(parser);
+                Interpreter intrp = new Interpreter(parser);
                 Console.WriteLine(intrp.interpret());
             }
         }
     }
-
-    //translators as per exercises
-    class RPNTranslator : NodeVisitor
-    {
-        private Parser parser;
-
-        public RPNTranslator(Parser parser_)
-        {
-            parser = parser_;
-        }
-
-        public string interpret()
-        {
-            AST tree = parser.parse();
-            return tree.accept(this);
-        }
-
-        public string visit(Num node)
-        {
-            return node.value;
-        }
-
-        public string visit(BinOp node)
-        {
-            switch (node.op.type)
-            {
-                case tokens.PLUS:
-                    return (node.left.accept(this) + " " + node.right.accept(this) + " +");
-                case tokens.MINUS:
-                    return (node.left.accept(this) + " " + node.right.accept(this) + " -");
-                case tokens.MUL:
-                    return (node.left.accept(this) + " " + node.right.accept(this) + " *");
-                case tokens.DIV:
-                    return (node.left.accept(this) + " " + node.right.accept(this) + " /");
-            }
-            return visit(node);
-        }
-
-        public string visit(AST node)
-        {
-            throw new Exception(String.Format("No visit_{0} method", node.GetType()));
-            return "";
-        }
-    }
-
-    class LispTranslator : NodeVisitor
-    {
-        private Parser parser;
-
-        public LispTranslator(Parser parser_)
-        {
-            parser = parser_;
-        }
-
-        public string interpret()
-        {
-            AST tree = parser.parse();
-            return tree.accept(this);
-        }
-
-        public string visit(Num node)
-        {
-            return node.value;
-        }
-
-        public string visit(BinOp node)
-        {
-            switch (node.op.type)
-            {
-                case tokens.PLUS:
-                    return ("(+ " + node.left.accept(this) + " " + node.right.accept(this) + ")");
-                case tokens.MINUS:
-                    return ("(- " + node.left.accept(this) + " " + node.right.accept(this) + ")");
-                case tokens.MUL:
-                    return ("(* " + node.left.accept(this) + " " + node.right.accept(this) + ")");
-                case tokens.DIV:
-                    return ("(/ " + node.left.accept(this) + " " + node.right.accept(this) + ")");
-            }
-            return visit(node);
-        }
-
-        public string visit(AST node)
-        {
-            throw new Exception(String.Format("No visit_{0} method", node.GetType()));
-            return "";
-        }
-    }
-
-    //these translators work, I'm so happy!
 }
