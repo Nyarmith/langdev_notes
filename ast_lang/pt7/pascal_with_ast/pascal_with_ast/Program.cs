@@ -47,9 +47,19 @@ namespace pascal_with_ast
         }
     }
 
-    class AST
+    interface Visitable
+    {
+        string accept(NodeVisitor visitor);
+    }
+
+    class AST : Visitable
     {
         public Token token;
+
+        public virtual string accept(NodeVisitor visitor)
+        {
+            return visitor.visit(this);
+        }
     }
 
     class BinOp : AST
@@ -63,6 +73,10 @@ namespace pascal_with_ast
             token = op = op_;
             right = right_;
         }
+        public override string accept(NodeVisitor visitor)
+        {
+            return visitor.visit(this);
+        }
     }
 
     class Num : AST
@@ -73,48 +87,60 @@ namespace pascal_with_ast
             token = token_;
             value = token_.value;
         }
+        public override string accept(NodeVisitor visitor)
+        {
+            return visitor.visit(this);
+        }
     }
 
     //TODO: Make below work, figure out how to make correct visitor pattern in c#
-    class NodeVisitor
+    interface NodeVisitor
     {
-        public string visit(AST node)
-        {
-            Action visitor = get_appropriate_method(node.GetType, generic_visit);
-            return visitor(node);
-        }
-
-        public void generic_visit(AST node)
-        {
-            throw new Exception(String.Format("No visit_{} method", node.GetType()));
-        }
+        string visit(AST node);
+        string visit(BinOp node);
+        string visit(Num node);
     }
 
     class Interpreter : NodeVisitor
     {
         private Parser parser;
+
         public Interpreter(Parser parser_)
         {
             parser = parser_;
         }
 
-        string visit_BinOp(BinOp node)
+        public string interpret()
+        {
+            AST tree = parser.parse();
+            return tree.accept(this);
+        }
+
+        public string visit(Num node)
+        {
+            return node.value;
+        }
+
+        public string visit(BinOp node)
         {
             switch (node.op.type)
             {
                 case tokens.PLUS:
-                    return (Convert.ToString(Convert.ToInt32(visit(node.left)) + Convert.ToInt32(visit(node.right))));
+                    return (Convert.ToString(Convert.ToInt32(node.left.accept(this)) + Convert.ToInt32(node.right.accept(this))));
                 case tokens.MINUS:
-                    return (Convert.ToString(Convert.ToInt32(visit(node.left)) + Convert.ToInt32(visit(node.right))));
+                    return (Convert.ToString(Convert.ToInt32(node.left.accept(this)) + Convert.ToInt32(node.right.accept(this))));
                 case tokens.MUL:
-                    return (Convert.ToString(Convert.ToInt32(visit(node.left)) * Convert.ToInt32(visit(node.right))));
+                    return (Convert.ToString(Convert.ToInt32(node.left.accept(this)) * Convert.ToInt32(node.right.accept(this))));
                 case tokens.DIV:
-                    return (Convert.ToString(Convert.ToInt32(visit(node.left)) / Convert.ToInt32(visit(node.right))));
+                    return (Convert.ToString(Convert.ToInt32(node.left.accept(this)) / Convert.ToInt32(node.right.accept(this))));
             }
+            return visit(node);
         }
-        string visit_Num(Num node)
+
+        public string visit(AST node)
         {
-            return node.value;
+            throw new Exception(String.Format("No visit_{0} method", node.GetType()));
+            return "";
         }
     }
 
@@ -221,13 +247,13 @@ namespace pascal_with_ast
 
     }
 
-    class Interpreter
+    class Parser
     {
 
         private Token current_token;
         private Lexer lexer;
 
-        public Interpreter(Lexer lexer_)
+        public Parser(Lexer lexer_)
         {
             lexer = lexer_;
             current_token = lexer.getNextToken();
@@ -339,8 +365,9 @@ namespace pascal_with_ast
                     continue;
 
                 Lexer lexer = new Lexer(input);
-                Interpreter intrp = new Interpreter(lexer);
-                Console.WriteLine(intrp.expr());
+                Parser parser = new Parser(lexer);
+                Interpreter intrp = new Interpreter(parser);
+                Console.WriteLine(intrp.interpret());
             }
         }
     }
