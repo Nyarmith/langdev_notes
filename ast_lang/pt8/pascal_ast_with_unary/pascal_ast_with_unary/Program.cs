@@ -22,12 +22,6 @@ namespace ast_pascal_with_unary
         public const string DIV = "DIV";
         public const string LPAREN = "LPAREN";
         public const string RPAREN = "RPAREN";
-        public const string ASSIGN = "ASSIGN";
-        public const string DOT = "DOT";
-        public const string SEMI = "SEMI";
-        public const string ID = "ID";
-        public const string BEGIN = "BEGIN";
-        public const string END = "END";
         public const string EOF = "EOF";
     }
 
@@ -156,15 +150,6 @@ namespace ast_pascal_with_unary
                 current_char = '\0';
             else
                 current_char = text[pos];
-        }
-
-        char peek()
-        {
-            int peek_pos = pos + 1;
-            if (peek_pos > text.Length)
-                return '\0';
-
-            return text[peek_pos];
         }
 
         // Scans the current sequence of numeric characters into an string and returns it

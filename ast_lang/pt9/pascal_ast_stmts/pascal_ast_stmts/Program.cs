@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace pascal_ast_stmts
 {
@@ -19,8 +20,14 @@ namespace pascal_ast_stmts
         public const string DIV = "DIV";
         public const string LPAREN = "LPAREN";
         public const string RPAREN = "RPAREN";
+        public const string ASSIGN = "ASSIGN";
+        public const string SEMI = "SEMI";
+        public const string BEGIN = "BEGIN";
+        public const string END = "END";
+        public const string ID = "ID";
         public const string DOT = "DOT";
         public const string EOF = "EOF";
+        public static Dictionary<String, Token> RESERVED = new Dictionary<string, Token> { { "BEGIN", new Token("BEGIN", "BEGIN") }, { "END", new Token("END", "END") } };
     }
 
     class Token
@@ -47,6 +54,10 @@ namespace pascal_ast_stmts
         string visit(BinOp node);
         string visit(UnaryOp node);
         string visit(Num node);
+        string visit(Compound node);
+        string visit(Assign node);
+        string visit(Var node);
+        string visit(NoOp node);
     }
 
     interface Visitable
@@ -111,6 +122,39 @@ namespace pascal_ast_stmts
         }
     }
 
+    class Compound : AST
+    {
+        public List<AST> children;
+    }
+
+    class Assign : AST
+    {
+        public Var left;
+        public AST right;
+        public Token op;
+        public Assign(Var left_, Token op_, AST right_)
+        {
+            left  = left_;
+            op    = op_;
+            right = right_;
+            token = op;
+        }
+    }
+
+    class Var : AST
+    {
+        public string value;
+        public Var(Token token_)
+        {
+            token = token_;
+            value = token.value;
+        }
+    }
+
+    class NoOp : AST
+    {
+    }
+
 
     //================================
     //==== Lexer Definition ====
@@ -148,6 +192,32 @@ namespace pascal_ast_stmts
                 current_char = '\0';
             else
                 current_char = text[pos];
+        }
+
+        char peek()
+        {
+            int peek_pos = pos + 1;
+            if (peek_pos >= text.Length)
+                return '\0';
+
+            return text[peek_pos];
+        }
+
+
+        //handles identifiers and reserved keywords
+        Token _id()
+        {
+            string result = "";
+            while (current_char != '\0' && Char.IsLetterOrDigit(current_char))
+            {
+                result += current_char;
+                advance();
+            }
+            if (tokens.RESERVED.ContainsKey(result))
+            {
+                return tokens.RESERVED[result];
+            }
+            return new Token(tokens.ID, result);
         }
 
         // Scans the current sequence of numeric characters into an string and returns it
@@ -206,6 +276,28 @@ namespace pascal_ast_stmts
                     advance();
                     return new Token(tokens.RPAREN, ")");
                 }
+
+                //New Tokens In Lexer
+                if (Char.IsLetterOrDigit(current_char))
+                {
+                    return _id();
+                }
+                if (current_char == ':' && peek() == '=')
+                {
+                    advance();
+                    advance();
+                    return new Token(tokens.ASSIGN, ":=");
+                }
+                if (current_char == ';')
+                {
+                    advance();
+                    return new Token(tokens.SEMI, ";");
+                }
+                if (current_char == '.')
+                {
+                    advance();
+                    return new Token(tokens.DOT, ".");
+                }
                 error();
             }
             return new Token(tokens.EOF, null);
@@ -251,6 +343,89 @@ namespace pascal_ast_stmts
                 current_token = lexer.getNextToken();
             else
                 error();
+        }
+
+        // program : compound_statement DOT
+        public AST program()
+        {
+            AST node = compound_statement();
+            Token t = current_token;
+            eat(tokens.DOT);
+            return node;
+        }
+
+        // compound_statement : BEGIN statement_list END
+        public AST compound_statement()
+        {
+            eat(tokens.BEGIN);
+            List<AST> nodes = statement_list();
+            eat(tokens.END);
+
+            Compound root = new Compound();
+
+            foreach (AST node in nodes)
+            {
+                root.children.Add(node);
+            }
+
+            return root;
+        }
+
+        // statement_list : statement | statement SEMI statement_list
+        public List<AST> statement_list()
+        {
+            AST node = statement();
+            List<AST> ret = new List<AST>() { node };
+
+            while (current_token.type == tokens.SEMI)
+            {
+                eat(tokens.SEMI);
+                ret.Add(statement());
+            }
+
+            if (current_token.type == tokens.ID)
+                error();
+
+            return ret;
+        }
+
+        // statement : compound_statement | assignment_statement | empty
+        AST statement()
+        {
+            AST ret;
+            if (current_token.type == tokens.BEGIN)
+                ret = compound_statement();
+            else if (current_token.type == tokens.ID)
+                ret = assignment_statement();
+            else
+                ret = empty();
+
+            return ret;
+        }
+
+        // assignment_statement : variable ASSIGN expr
+        AST assignment_statement()
+        {
+            Var left = variable();
+            Token tkn = current_token;
+            eat(tokens.ASSIGN);
+            AST right = expr();
+            return new Assign(left, tkn, right);
+        }
+
+        // variable : ID
+        Var variable()
+        {
+            Var ret = new Var(current_token);
+            eat(tokens.ID);
+            return ret;
+        }
+
+        // empty :
+        // an empty production
+        AST empty()
+        {
+            return new NoOp();
         }
 
         // expr: term ((PLUS|MINUS) term)*
@@ -300,7 +475,7 @@ namespace pascal_ast_stmts
         }
 
 
-        // factor : (PLUS|MINUS) factor | INTEGER | LPAREN expr RPAREN
+        // factor : (PLUS|MINUS) factor | INTEGER | LPAREN expr RPAREN | variable
         public AST factor()
         {
             Token tkn = current_token;
@@ -326,6 +501,10 @@ namespace pascal_ast_stmts
                 eat(tokens.MINUS);
                 return new UnaryOp(tkn, factor());
             }
+            else
+            {
+                return variable();
+            }
 
             error();
             return new AST(); //should never get here
@@ -333,7 +512,10 @@ namespace pascal_ast_stmts
 
         public AST parse()
         {
-            return expr();
+            AST node = program();
+            if (current_token.type != tokens.EOF)
+                error();
+            return node;
         }
     }
 
@@ -343,6 +525,8 @@ namespace pascal_ast_stmts
     class Interpreter : NodeVisitor
     {
         private Parser parser;
+
+        private Dictionary<string, string> GLOBAL_SCOPE = new Dictionary<string,string>();
 
         public Interpreter(Parser parser_)
         {
@@ -392,6 +576,37 @@ namespace pascal_ast_stmts
         {
             throw new Exception(String.Format("No visit_{0} method", node.GetType()));
             return "";
+        }
+
+        public string visit(Compound node)
+        {
+            foreach(AST n in node.children)
+            {
+                n.accept(this);
+            }
+            return "";
+        }
+
+        public string visit(Assign node)
+        {
+            string name = node.left.value;
+            GLOBAL_SCOPE[name] = node.right.accept(this);
+            return GLOBAL_SCOPE[name];
+        }
+
+        public string visit(Var node)
+        {
+            string var_name = node.value;
+            if (GLOBAL_SCOPE.ContainsKey(var_name))
+                return GLOBAL_SCOPE[var_name];
+            else
+                throw new Exception("Error, variable not found: " + var_name);
+            return "";
+        }
+
+        public string visit(NoOp node)
+        {
+            throw new NotImplementedException();
         }
     }
 
